@@ -7,6 +7,8 @@ import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { Send, Bot, User, Loader2, FileText, Save, CheckCircle2, Trash2, ImagePlus, X, Gamepad2, LayoutDashboard } from 'lucide-react';
 
+import { MapRenderer } from '../game/modules/map/client';
+
 interface Message {
   role: 'user' | 'assistant';
   text: string;
@@ -193,11 +195,18 @@ export default function App() {
         body: JSON.stringify({ history, message: userMessage, images: currentImages }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to get response');
+        let errorMsg = 'Failed to get response';
+        try {
+          const data = await response.json();
+          errorMsg = data.error || errorMsg;
+        } catch(e) {
+          errorMsg = await response.text();
+        }
+        throw new Error(errorMsg);
       }
+
+      const data = await response.json();
 
       setMessages(prev => [...prev, { role: 'assistant', text: data.text }]);
     } catch (error: any) {
@@ -399,10 +408,11 @@ export default function App() {
         <main className="flex-1 overflow-hidden relative">
           {/* Game Preview Tab */}
           <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-slate-400">
-            <p>Game code will be rendered here. (We can mount a GameEntry component later!)</p>
+            <MapRenderer />
           </div>
         </main>
       )}
     </div>
   );
 }
+
