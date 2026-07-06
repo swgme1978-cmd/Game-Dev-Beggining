@@ -1,0 +1,12 @@
+{
+  "riverHexCodes": ["#0000FF", "#0000CC"],
+  "oceanProvinceHexes": ["#000080", "#0000A0"],
+  "landProvinceTerrainTypes": {
+    "#FF0000": "GRASSLAND",
+    "#00FF00": "FOREST",
+    "#FFFF00": "DESERT",
+    "#C0C0C0": "MOUNTAINOUS"
+  },
+  "defaultProvinceNamePrefix": "Territory_",
+  "defaultRiverChannelNamePrefix": "River_"
+}

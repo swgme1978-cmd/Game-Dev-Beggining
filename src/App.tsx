@@ -5,11 +5,12 @@
 
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2, FileText, Save, CheckCircle2, Trash2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, FileText, Save, CheckCircle2, Trash2, ImagePlus, X, Gamepad2, LayoutDashboard } from 'lucide-react';
 
 interface Message {
   role: 'user' | 'assistant';
   text: string;
+  images?: string[];
 }
 
 const documentRegex = /<game_document\s+title="([^"]+)">([\s\S]*?)<\/game_document>/g;
@@ -133,7 +134,10 @@ export default function App() {
 
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingImages, setPendingImages] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<'assistant' | 'game'>('assistant');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -141,7 +145,21 @@ export default function App() {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, isLoading]);
+  }, [messages, isLoading, pendingImages]);
+
+  const handleImageUpload = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+        alert('Please select an image file.');
+        return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (e.target?.result) {
+        setPendingImages(prev => [...prev, e.target!.result as string]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleClearChat = () => {
     setMessages([
@@ -151,25 +169,28 @@ export default function App() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
+    if ((!input.trim() && pendingImages.length === 0) || isLoading) return;
 
     const userMessage = input.trim();
+    const currentImages = [...pendingImages];
     setInput('');
+    setPendingImages([]);
     
     // Create the history for the API call (excluding the initial greeting to keep it lean, or including it - let's include it)
     const history = messages.map(m => ({
       role: m.role,
-      text: m.text
+      text: m.text,
+      images: m.images
     }));
 
-    setMessages(prev => [...prev, { role: 'user', text: userMessage }]);
+    setMessages(prev => [...prev, { role: 'user', text: userMessage, images: currentImages }]);
     setIsLoading(true);
 
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history, message: userMessage }),
+        body: JSON.stringify({ history, message: userMessage, images: currentImages }),
       });
 
       const data = await response.json();
@@ -179,9 +200,10 @@ export default function App() {
       }
 
       setMessages(prev => [...prev, { role: 'assistant', text: data.text }]);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message:', error);
-      setMessages(prev => [...prev, { role: 'assistant', text: '**Error:** Failed to connect to the assistant. Please try again.' }]);
+      const errorMessage = error instanceof Error ? error.message : (error?.message || 'Failed to connect to the assistant. Please try again.');
+      setMessages(prev => [...prev, { role: 'assistant', text: `**Error:** ${errorMessage}` }]);
     } finally {
       setIsLoading(false);
     }
@@ -190,13 +212,35 @@ export default function App() {
   return (
     <div className="flex flex-col h-screen bg-slate-950 text-slate-200 font-sans">
       <header className="px-6 py-4 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
-            <Bot size={24} />
+        <div className="flex items-center gap-6">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-emerald-500/10 text-emerald-400 rounded-lg">
+              <Bot size={24} />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold text-slate-100 tracking-tight">Game Design Assistant</h1>
+              <p className="text-xs text-slate-400">Minimizing hallucination, maintaining scope.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold text-slate-100 tracking-tight">Game Design Assistant</h1>
-            <p className="text-xs text-slate-400">Minimizing hallucination, maintaining scope.</p>
+          <div className="flex items-center gap-2 bg-slate-900 p-1 rounded-lg border border-slate-800">
+            <button
+              onClick={() => setActiveTab('assistant')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'assistant' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <LayoutDashboard size={16} />
+              Assistant
+            </button>
+            <button
+              onClick={() => setActiveTab('game')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                activeTab === 'game' ? 'bg-slate-800 text-emerald-400 shadow-sm' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Gamepad2 size={16} />
+              Game Preview
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -211,7 +255,9 @@ export default function App() {
         </div>
       </header>
 
-      <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+      {activeTab === 'assistant' ? (
+        <>
+          <main className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
         <div className="max-w-4xl mx-auto space-y-6">
           {messages.map((msg, index) => (
             <div 
@@ -231,6 +277,13 @@ export default function App() {
                     : 'bg-slate-800 border border-slate-700 rounded-bl-sm shadow-sm'
                 }`}
               >
+                {msg.images && msg.images.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {msg.images.map((img, i) => (
+                      <img key={i} src={img} alt="User upload" className="h-40 w-auto rounded-lg border border-slate-900/50 shadow-sm" />
+                    ))}
+                  </div>
+                )}
                 {msg.role === 'user' ? (
                   <p className="whitespace-pre-wrap">{msg.text}</p>
                 ) : (
@@ -265,35 +318,91 @@ export default function App() {
         <div className="max-w-4xl mx-auto">
           <form 
             onSubmit={handleSubmit}
-            className="flex items-end gap-3 bg-slate-950 p-2 rounded-2xl border border-slate-800 focus-within:border-emerald-500/50 transition-colors shadow-inner"
+            className="flex flex-col bg-slate-950 p-2 rounded-2xl border border-slate-800 focus-within:border-emerald-500/50 transition-colors shadow-inner"
           >
-            <textarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit(e);
-                }
-              }}
-              placeholder="Discuss your game design here..."
-              className="flex-1 max-h-48 min-h-[44px] bg-transparent resize-none border-0 focus:ring-0 px-3 py-2.5 text-slate-100 placeholder-slate-500"
-              rows={1}
-            />
-            <button
-              type="submit"
-              disabled={!input.trim() || isLoading}
-              className="p-3 mb-0.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
-            >
-              <Send size={20} className={isLoading ? "opacity-0" : "opacity-100"} />
-              {isLoading && <Loader2 size={20} className="animate-spin absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />}
-            </button>
+            {pendingImages.length > 0 && (
+              <div className="flex gap-3 p-2 border-b border-slate-800 overflow-x-auto mb-2">
+                {pendingImages.map((img, i) => (
+                  <div key={i} className="relative group shrink-0 mt-2 mr-2">
+                    <img src={img} alt="Upload preview" className="h-16 w-16 object-cover rounded-md border border-slate-700" />
+                    <button 
+                      type="button"
+                      onClick={() => setPendingImages(prev => prev.filter((_, idx) => idx !== i))}
+                      className="absolute -top-2 -right-2 bg-slate-800 text-slate-300 rounded-full p-1 hover:bg-red-500 hover:text-white transition-colors shadow-md"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex items-end gap-3">
+              <button 
+                type="button" 
+                onClick={() => fileInputRef.current?.click()}
+                className="p-3 mb-0.5 rounded-xl text-slate-400 hover:text-emerald-400 hover:bg-slate-900 transition-colors shrink-0"
+                title="Attach Image"
+              >
+                <ImagePlus size={20} />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef}
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    Array.from(e.target.files).forEach(handleImageUpload);
+                  }
+                  e.target.value = '';
+                }}
+              />
+              <textarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onPaste={(e) => {
+                  if (e.clipboardData.files.length > 0) {
+                     e.preventDefault();
+                     Array.from(e.clipboardData.files).forEach(handleImageUpload);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() || pendingImages.length > 0) {
+                       handleSubmit(e);
+                    }
+                  }
+                }}
+                placeholder="Discuss your game design here... (Paste images too)"
+                className="flex-1 max-h-48 min-h-[44px] bg-transparent resize-none border-0 focus:ring-0 px-3 py-2.5 text-slate-100 placeholder-slate-500"
+                rows={1}
+              />
+              <button
+                type="submit"
+                disabled={(!input.trim() && pendingImages.length === 0) || isLoading}
+                className="p-3 mb-0.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shrink-0"
+              >
+                <Send size={20} className={isLoading ? "opacity-0" : "opacity-100"} />
+                {isLoading && <Loader2 size={20} className="animate-spin absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />}
+              </button>
+            </div>
           </form>
           <p className="text-center text-xs text-slate-500 mt-3">
             Press Enter to send, Shift + Enter for new line.
           </p>
         </div>
       </footer>
+        </>
+      ) : (
+        <main className="flex-1 overflow-hidden relative">
+          {/* Game Preview Tab */}
+          <div className="absolute inset-0 flex items-center justify-center bg-slate-900 text-slate-400">
+            <p>Game code will be rendered here. (We can mount a GameEntry component later!)</p>
+          </div>
+        </main>
+      )}
     </div>
   );
 }

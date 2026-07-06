@@ -17,7 +17,7 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: '50mb' }));
 
   app.post('/api/save-document', async (req, res) => {
     try {
@@ -43,16 +43,37 @@ async function startServer() {
 
   app.post('/api/chat', async (req, res) => {
     try {
-      const { history, message } = req.body;
+      const { history, message, images } = req.body;
       
-      const contents = history.map((msg: any) => ({
-        role: msg.role === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-      }));
+      const contents = history.map((msg: any) => {
+        const parts: any[] = [{ text: msg.text }];
+        if (msg.images && Array.isArray(msg.images)) {
+          msg.images.forEach((img: string) => {
+             const match = img.match(/^data:([^;]+);base64,(.+)$/);
+             if (match) {
+               parts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+             }
+          });
+        }
+        return {
+          role: msg.role === 'user' ? 'user' : 'model',
+          parts
+        };
+      });
       
+      const currentParts: any[] = [{ text: message }];
+      if (images && Array.isArray(images)) {
+        images.forEach((img: string) => {
+           const match = img.match(/^data:([^;]+);base64,(.+)$/);
+           if (match) {
+             currentParts.push({ inlineData: { mimeType: match[1], data: match[2] } });
+           }
+        });
+      }
+
       contents.push({
         role: 'user',
-        parts: [{ text: message }]
+        parts: currentParts
       });
 
       let codingAgentRules = '';
@@ -108,7 +129,22 @@ ${codingAgentRules}
       res.json({ text: response.text });
     } catch (error: any) {
       console.error('Chat error:', error);
-      res.status(500).json({ error: error.message || 'Failed to generate response' });
+      let errorMessage = 'Failed to generate response';
+      if (error.status === 429 || error.message?.includes('429')) {
+         errorMessage = 'API Rate limit exceeded. Please wait a few moments and try again.';
+      } else if (error.message) {
+         try {
+             const parsed = JSON.parse(error.message);
+             if (parsed.error && parsed.error.message) {
+                 errorMessage = parsed.error.message;
+             } else {
+                 errorMessage = error.message;
+             }
+         } catch(e) {
+             errorMessage = error.message;
+         }
+      }
+      res.status(500).json({ error: errorMessage });
     }
   });
 
