@@ -1,0 +1,6 @@
+{
+  "name": "Game Design Assistant",
+  "description": "A conversational assistant for game design planning.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
